@@ -188,7 +188,7 @@ function getFeedObserver(): IntersectionObserver | null {
       },
       {
         root: null,
-        rootMargin: '500px 0px 500px 0px', // ~1 post ahead / in viewport
+        rootMargin: '1500px 0px 1500px 0px', // ~3 posts ahead: feed image loads when 3 posts before view screen, 0kb outside
         threshold: 0,
       }
     );

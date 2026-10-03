@@ -156,53 +156,145 @@ const CURRENCY_OPTIONS = [
   { code: 'GHS', symbol: 'GH₵', name: 'Ghanaian Cedi' },
 ];
 
-type NormalizedMedia = { url: string; kind: 'image' | 'video' };
+type NormalizedMedia = {
+  url: string;
+  thumb?: string;
+  feed?: string;
+  full?: string;
+  kind: 'image' | 'video';
+  width?: number;
+  height?: number;
+};
 
 const getPostMediaList = (post: any): NormalizedMedia[] => {
   const out: NormalizedMedia[] = [];
 
-  let mediaUrls: string[] = [];
-  if (post?.media_urls) {
-    if (Array.isArray(post.media_urls)) mediaUrls = post.media_urls;
-    else if (typeof post.media_urls === 'string') {
-      try { const parsed = JSON.parse(post.media_urls); mediaUrls = Array.isArray(parsed) ? parsed : []; } catch { mediaUrls = []; }
+  const guessKind = (url: string, explicitType?: string): 'image' | 'video' => {
+    const t = String(explicitType || '').toLowerCase();
+    const u = String(url || '').toLowerCase();
+    if (t.includes('video') || /\.(mp4|webm|mov|m4v|avi|mkv|3gp)(\?|$)/i.test(u)) return 'video';
+    return 'image';
+  };
+
+  const safeParseArray = (value: any): any[] => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+      const parsed = JSON.parse(value || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
     }
-  }
+  };
 
-  let images: string[] = [];
-  if (post?.images) {
-    if (Array.isArray(post.images)) images = post.images;
-    else if (typeof post.images === 'string') {
-      try { const parsed = JSON.parse(post.images); images = Array.isArray(parsed) ? parsed : []; } catch { images = []; }
+  try {
+    // 1. Check media_meta first (contains webp thumbnail and feed URLs from image bundle)
+    const metaItems = safeParseArray(post?.media_meta);
+    if (metaItems.length > 0) {
+      metaItems.forEach((item: any) => {
+        let parsedItem = item;
+        if (typeof item === 'string') {
+          try {
+            parsedItem = JSON.parse(item);
+          } catch {
+            parsedItem = null;
+          }
+        }
+
+        if (parsedItem && typeof parsedItem === 'object') {
+          const thumbUrl = String(parsedItem.thumb || parsedItem.thumbnail_url || parsedItem.thumbnail || '').trim();
+          const feedUrl = String(parsedItem.feed || parsedItem.feed_url || '').trim();
+          const fullUrl = String(parsedItem.full || parsedItem.full_url || '').trim();
+          const urlField = String(parsedItem.url || '').trim();
+
+          const displayUrl = feedUrl || fullUrl || thumbUrl || urlField;
+          if (displayUrl) {
+            out.push({
+              url: displayUrl,
+              thumb: thumbUrl || feedUrl || fullUrl || urlField,
+              feed: feedUrl || fullUrl || thumbUrl || urlField,
+              full: fullUrl || feedUrl || thumbUrl || urlField,
+              kind: guessKind(displayUrl, parsedItem.type),
+            });
+          }
+        }
+      });
+
+      if (out.length > 0) return out;
     }
-  }
 
-  const arrUrls: any[] = mediaUrls.length ? mediaUrls : images;
-  for (const u of arrUrls) {
-    const url = String(u || '').trim();
-    if (!url) continue;
-    out.push({ url, kind: 'image' });
-  }
+    // 2. Fallback to media_urls
+    const rawUrls = safeParseArray(post?.media_urls);
+    const rawTypes = safeParseArray(post?.media_types);
+    if (rawUrls.length > 0) {
+      rawUrls.forEach((u: string, i: number) => {
+        const url = String(u || '').trim();
+        if (url) {
+          out.push({
+            url,
+            thumb: url,
+            feed: url,
+            full: url,
+            kind: guessKind(url, rawTypes[i]),
+          });
+        }
+      });
+      if (out.length > 0) return out;
+    }
 
-  const arrMedia: any[] = Array.isArray(post?.media) ? post.media : [];
-  for (const m of arrMedia) {
-    const url = String(m?.url || m?.media_url || '').trim();
-    if (!url) continue;
-    const type = String(m?.type || m?.media_type || '').toLowerCase();
-    const clean = url.split('?')[0].split('#')[0];
-    const ext = clean.split('.').pop()?.toLowerCase() || '';
-    const isVideo = type.startsWith('video') || ['mp4', 'webm', 'mov', 'm4v', 'avi', 'mkv', '3gp'].includes(ext);
-    out.push({ url, kind: isVideo ? 'video' : 'image' });
-  }
+    // 3. Fallback to images array
+    const rawImages = safeParseArray(post?.images);
+    if (rawImages.length > 0) {
+      rawImages.forEach((img: any) => {
+        const u =
+          typeof img === 'string'
+            ? img.trim()
+            : String(img?.feed || img?.full || img?.url || img?.thumb || '').trim();
+        if (u && u !== '[object Object]' && u !== 'null' && u !== 'undefined') {
+          out.push({
+            url: u,
+            thumb: String(img?.thumb || u),
+            feed: String(img?.feed || u),
+            full: String(img?.full || u),
+            kind: guessKind(u),
+          });
+        }
+      });
+      if (out.length > 0) return out;
+    }
 
-  if (out.length === 0) {
+    // 4. Fallback to media array
+    const arrMedia: any[] = Array.isArray(post?.media) ? post.media : [];
+    if (arrMedia.length > 0) {
+      for (const m of arrMedia) {
+        const url = String(m?.feed || m?.full || m?.url || m?.media_url || m?.thumb || '').trim();
+        if (!url) continue;
+        const type = String(m?.type || m?.media_type || '').toLowerCase();
+        out.push({
+          url,
+          thumb: String(m?.thumb || url),
+          feed: String(m?.feed || url),
+          full: String(m?.full || url),
+          kind: guessKind(url, type),
+        });
+      }
+      if (out.length > 0) return out;
+    }
+
+    // 5. Fallback to single media_url
     const single = String(post?.media_url || '').trim();
     if (single) {
       const mediaTypeRaw = String(post?.media_type || '').toLowerCase();
-      const ext = single.split('?')[0].split('#')[0].split('.').pop()?.toLowerCase() || '';
-      const isVideo = mediaTypeRaw.startsWith('video') || ['mp4', 'webm', 'mov', 'm4v', 'avi', 'mkv', '3gp'].includes(ext);
-      out.push({ url: single, kind: isVideo ? 'video' : 'image' });
+      out.push({
+        url: single,
+        thumb: single,
+        feed: single,
+        full: single,
+        kind: guessKind(single, mediaTypeRaw),
+      });
     }
+  } catch (e) {
+    console.warn('Error parsing group post media:', e);
   }
 
   return out.filter((x) => x.url);
@@ -1296,6 +1388,10 @@ function normalizePost(post: any): PostType {
     if (Array.isArray(post.media_types)) mediaTypes = post.media_types;
     else if (typeof post.media_types === 'string') { try { const parsed = JSON.parse(post.media_types); mediaTypes = Array.isArray(parsed) ? parsed : []; } catch { mediaTypes = []; } }
   }
+  let mediaMeta: any = post?.media_meta ?? null;
+  if (typeof mediaMeta === 'string') {
+    try { mediaMeta = JSON.parse(mediaMeta); } catch {}
+  }
   const commentCount = typeof post?.comment_count === 'number' ? post.comment_count : typeof post?.comments_count === 'number' ? post.comments_count : Array.isArray(post?.comments) ? post.comments.length : 0;
   return {
     ...post,
@@ -1307,6 +1403,7 @@ function normalizePost(post: any): PostType {
     media_urls: mediaUrls.length ? mediaUrls : images,
     images: mediaUrls.length ? mediaUrls : images,
     media_types: mediaTypes,
+    media_meta: mediaMeta,
     type: post?.type ?? (mediaUrl ? (mediaType?.startsWith('image/') ? 'image' : 'video') : 'text'),
     reactions: Array.isArray(post?.reactions) ? post.reactions : [],
     comments: Array.isArray(post?.comments) ? post.comments : [],
@@ -2150,7 +2247,15 @@ const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>, type: '
                                                     
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { 
-    if (e.target.files) setPostFiles(Array.from(e.target.files)); 
+    if (e.target.files) {
+      const selected = Array.from(e.target.files) as File[];
+      const imageFiles = selected.filter(f => f.type.startsWith('image/'));
+      const hasVideo = selected.some(f => f.type.startsWith('video/') || /\.(mp4|webm|mov|m4v|avi|mkv|3gp)$/i.test(f.name));
+      if (hasVideo) {
+        alert('Video uploads are disabled in groups. Only photos can be posted.');
+      }
+      setPostFiles(imageFiles);
+    }
   };
   
   const handleRemoveFile = (index: number) => setPostFiles(prev => prev.filter((_, i) => i !== index));
@@ -3713,7 +3818,6 @@ return (
                       <div key={index} className="relative aspect-square rounded-lg overflow-hidden group">
                         <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
                         <button onClick={() => handleRemoveFile(index)} className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><i className="fas fa-times text-white text-xs"></i></button>
-                        {postFiles[index]?.type.startsWith('video/') && (<div className="absolute inset-0 flex items-center justify-center bg-black/40"><i className="fas fa-play text-white text-2xl"></i></div>)}
                       </div>
                     ))}
                     {previews.length > 4 && (<div className="aspect-square rounded-lg bg-[#1E293B] flex items-center justify-center"><span className="text-[#F8FAFC] font-bold text-lg">+{previews.length - 4}</span></div>)}
@@ -3722,17 +3826,18 @@ return (
               )}
               
               {/* Action Buttons */}
-              {/* Action Buttons */}
-<div className="border-t border-[#1E293B] bg-[#0F172A] p-2">
-  <div 
-    className="flex items-center gap-4 p-4 hover:bg-[#141E33] rounded-2xl cursor-pointer transition-all border border-transparent hover:border-[#1E293B]" 
-    onClick={handlePostImageClick}  // ✅ Changed from postFileInputRef.current?.click()
-  >
-    <div className="w-10 h-10 bg-[#45BD62]/10 rounded-full flex items-center justify-center text-[#45BD62]">
-      <i className="fas fa-images text-xl"></i>
-    </div>
-    <span className="text-[#F8FAFC] font-black text-lg">{postFiles.length > 0 ? `${postFiles.length} file(s) selected` : 'Add Photo/Video'}</span>
-  </div>
+              <div className="border-t border-[#1E293B] bg-[#0F172A] p-2">
+                <div 
+                  className="flex items-center gap-4 p-4 hover:bg-[#141E33] rounded-2xl cursor-pointer transition-all border border-transparent hover:border-[#1E293B]" 
+                  onClick={handlePostImageClick}
+                >
+                  <div className="w-10 h-10 bg-[#45BD62]/10 rounded-full flex items-center justify-center text-[#45BD62]">
+                    <i className="fas fa-images text-xl"></i>
+                  </div>
+                  <span className="text-[#F8FAFC] font-black text-lg">
+                    {postFiles.length > 0 ? `${postFiles.length} photo${postFiles.length > 1 ? 's' : ''} selected` : 'Add Photos'}
+                  </span>
+                </div>
               </div>
               
               {/* Submit Button */}
@@ -3742,7 +3847,7 @@ return (
                 </button>
               </div>
             </div>
-            <input type="file" ref={postFileInputRef} className="hidden" accept="image/*,video/*" multiple onChange={handleFileChange} />
+            <input type="file" ref={postFileInputRef} className="hidden" accept="image/*" multiple onChange={handleFileChange} />
           </div>
         )}
         

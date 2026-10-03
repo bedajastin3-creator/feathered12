@@ -1845,7 +1845,7 @@ const buildGroupImageBundle = async (file: File) => {
   try {
     const img = await loadImageElement(objectUrl);
     const thumbSize = calcContainSize(img.naturalWidth, img.naturalHeight, 320);
-    const feedSize = calcContainSize(img.naturalWidth, img.naturalHeight, 1280);
+    const feedSize = calcContainSize(img.naturalWidth, img.naturalHeight, 1080);
 
     const drawToCanvas = (width: number, height: number) => {
       const canvas = document.createElement('canvas');
@@ -1864,10 +1864,14 @@ const buildGroupImageBundle = async (file: File) => {
     const feedBlob = await canvasToBlob(feedCanvas, 'image/webp', 0.82);
 
     const ts = Date.now();
+    const safeBase = (file.name || 'image').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const thumbFile = new File([thumbBlob], `${ts}_${safeBase}_thumb.webp`, { type: 'image/webp' });
+    const feedFile = new File([feedBlob], `${ts}_${safeBase}_feed.webp`, { type: 'image/webp' });
+
     return {
-      thumb: new File([thumbBlob], `${ts}-thumbnail.webp`, { type: 'image/webp' }),
-      feed: new File([feedBlob], `${ts}-feed.webp`, { type: 'image/webp' }),
-      full: new File([feedBlob], `${ts}-feed.webp`, { type: 'image/webp' }), // full = feed
+      thumb: thumbFile,
+      feed: feedFile,
+      full: feedFile, // Group only compresses to feed image - both full and feed point to the compressed feed image!
     };
   } finally {
     URL.revokeObjectURL(objectUrl);
@@ -8036,14 +8040,10 @@ const leaveGroup = useCallback(async (groupId: number) => {
       let completedFiles = 0;
       const uploadResults = await Promise.all(
         fileArray.map(async (file) => {
-          let res;
-          if (file.type.startsWith('image/')) {
-            res = await uploadGroupImageBundle(file);
-          } else if (file.type.startsWith('video/')) {
-            res = await uploadGroupVideoBundle(file);
-          } else {
-            throw new Error(`Unsupported file type: ${file.type}`);
+          if (!file.type.startsWith('image/')) {
+            throw new Error('Video uploads are disabled in groups. Only photos can be posted.');
           }
+          const res = await uploadGroupImageBundle(file);
 
           completedFiles++;
           const pct = Math.min(85, 20 + Math.round((completedFiles / fileArray.length) * 65));
@@ -8051,38 +8051,25 @@ const leaveGroup = useCallback(async (groupId: number) => {
             ...prev,
             progress: pct,
             secondaryStatus: fileArray.length > 1
-              ? `Uploaded file ${completedFiles} of ${fileArray.length}...`
-              : 'Media uploaded. Publishing post...',
+              ? `Uploaded photo ${completedFiles} of ${fileArray.length}...`
+              : 'Photo uploaded. Publishing post...',
           }) : null);
 
           return res;
         })
       );
 
-      media_meta = uploadResults.map((r) => {
-        if (r.kind === 'image') {
-          return {
-            thumb: r.thumb,
-            feed: r.feed,
-            full: r.feed, // full = feed
-            type: 'image',
-          };
-        }
-        return {
-          thumb: r.thumb || '',
-          feed: '',
-          full: r.full,
-          type: 'video',
-        };
-      });
+      media_meta = uploadResults.map((r) => ({
+        thumb: r.thumb,
+        feed: r.feed,
+        full: r.feed, // group only compress to feed image
+        type: 'image',
+      }));
 
-      media_urls = uploadResults
-        .map((r) => (r.kind === 'image' ? r.feed : r.full))
-        .filter(Boolean);
-      
-      media_types = uploadResults.map((r) => r.type);
+      media_urls = uploadResults.map((r) => r.feed).filter(Boolean);
+      media_types = uploadResults.map(() => 'image');
       media_url = media_urls[0] || null;
-      media_type = media_types[0] || null;
+      media_type = 'image';
     } catch (error) {
       console.error('Failed to upload files:', error);
       setPostUploadState((prev) => prev ? ({
