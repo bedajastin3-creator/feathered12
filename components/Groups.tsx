@@ -1016,10 +1016,7 @@ const RecruitmentPost: React.FC<any> = (props) => {
 };
 
 const BuySellPost: React.FC<any> = (props) => {
-  const { post, author, currentUser, onMessageSeller, onMakeOffer, onProfileClick, users, onComment, onCommentAdded } = props;
-  const [showOfferModal, setShowOfferModal] = useState(false);
-  const [offerAmount, setOfferAmount] = useState('');
-  const [offerSent, setOfferSent] = useState(false);
+  const { post, author, currentUser, onProfileClick, users, onComment, onCommentAdded } = props;
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [localReactionCount, setLocalReactionCount] = useState(0);
   const [localMyReaction, setLocalMyReaction] = useState<ReactionType | undefined>();
@@ -1060,14 +1057,6 @@ const BuySellPost: React.FC<any> = (props) => {
 
   const isPostAuthor = currentUser?.id === author.id;
   const canModerate = Boolean(isPostAuthor || props.isGroupAdmin || props.isPlatformAdmin);
-
-  const handleMakeOffer = async () => {
-    if (!currentUser) { alert('Please login to make an offer'); return; }
-    if (!offerAmount || isNaN(Number(offerAmount))) { alert('Please enter a valid amount'); return; }
-    if (onMakeOffer) { try { await onMakeOffer(post.id, Number(offerAmount)); setOfferSent(true); setShowOfferModal(false); } catch (error) { console.error('Failed to make offer:', error); } }
-  };
-
-  const handleMessage = () => { if (!currentUser) { alert('Please login to message seller'); return; } if (onMessageSeller) onMessageSeller(author.id); };
 
   const handleLikeClick = async (type: ReactionType) => {
     if (!currentUser) return;
@@ -1157,21 +1146,8 @@ const BuySellPost: React.FC<any> = (props) => {
             <SavePostButton post={post} />
           </div>
         </div>
-        <div className="px-2 py-3 border-t border-[#1E293B] grid grid-cols-2 gap-2">
-          <button onClick={handleMessage} className="flex items-center justify-center gap-2 h-10 rounded-lg bg-[#1877F2] text-white font-bold hover:bg-[#166fe5] transition-colors"><i className="fas fa-comment"></i>Message</button>
-          <button onClick={() => setShowOfferModal(true)} disabled={status !== 'available' || offerSent} className="flex items-center justify-center gap-2 h-10 rounded-lg bg-[#1E293B] text-[#F8FAFC] font-bold hover:bg-[#334155] transition-colors disabled:opacity-50"><i className="fas fa-tag"></i>{offerSent ? 'Offer Sent' : 'Make Offer'}</button>
-        </div>
         <GroupCommentPreview post={post} groupId={post.group_id || props.group?.id} currentUser={currentUser} users={users} onProfileClick={onProfileClick} onOpenComments={handleOpenComments} />
       </div>
-      {showOfferModal && (
-        <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-[#0F172A] w-full max-w-[400px] rounded-xl border border-[#1E293B] p-4">
-            <h3 className="text-[#F8FAFC] font-bold text-lg mb-4">Make an Offer</h3>
-            <div className="mb-4"><label className="block text-[#94A3B8] text-sm mb-1">Your offer ({getCurrencySymbol(currency)})</label><input type="number" value={offerAmount} onChange={(e) => setOfferAmount(e.target.value)} placeholder={`Enter amount (max ${formattedPrice})`} max={price} className="w-full bg-[#1E293B] border border-[#1E293B] rounded-lg p-2.5 text-[#F8FAFC] outline-none" /></div>
-            <div className="flex gap-2"><button onClick={() => setShowOfferModal(false)} className="flex-1 bg-[#1E293B] text-[#F8FAFC] py-2.5 rounded-lg font-bold hover:bg-[#334155] transition-colors">Cancel</button><button onClick={handleMakeOffer} disabled={!offerAmount} className="flex-1 bg-[#1877f2] text-white py-2.5 rounded-lg font-bold hover:bg-[#166fe5] transition-colors disabled:opacity-50">Send Offer</button></div>
-          </div>
-        </div>
-      )}
       <ShareBottomSheet isOpen={showShareSheet} onClose={() => setShowShareSheet(false)} post={post} currentUser={currentUser} users={users} onShareComplete={handleShareComplete} />
       <GalleryViewer isOpen={galleryOpen} urls={galleryUrls} startIndex={galleryIndex} onClose={() => setGalleryOpen(false)} postId={post.id} currentUser={currentUser} reactionCount={localReactionCount} commentCount={commentCount} shareCount={shareCount} myReaction={localMyReaction} onReact={handleLikeClick} onOpenComments={handleOpenComments} onShare={() => setShowShareSheet(true)} onOpenReactions={() => setShowReactionsSheet(true)} />
     </>

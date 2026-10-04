@@ -179,20 +179,33 @@ const normalizeStatus = (v: any) => {
 };
 
 const isMemberOrAdmin = async (env: any, group_id: number, user_id: number) => {
-  const mem = await env.DB.prepare(
-    `SELECT role FROM group_members WHERE group_id=? AND user_id=? LIMIT 1`
-  )
-    .bind(group_id, user_id)
-    .first();
-  return mem ? { ok: true, role: String((mem as any).role || "") } : { ok: false, role: "" };
+  try {
+    const mem = await env.DB.prepare(
+      `SELECT role, COALESCE(posting_disabled, 0) AS posting_disabled FROM group_members WHERE group_id=? AND user_id=? LIMIT 1`
+    )
+      .bind(group_id, user_id)
+      .first();
+    return mem
+      ? { ok: true, role: String((mem as any).role || ""), posting_disabled: !!(mem as any).posting_disabled }
+      : { ok: false, role: "", posting_disabled: false };
+  } catch {
+    const mem = await env.DB.prepare(
+      `SELECT role FROM group_members WHERE group_id=? AND user_id=? LIMIT 1`
+    )
+      .bind(group_id, user_id)
+      .first();
+    return mem
+      ? { ok: true, role: String((mem as any).role || ""), posting_disabled: false }
+      : { ok: false, role: "", posting_disabled: false };
+  }
 };
 
 const getGroupCategory = async (env: any, group_id: number) => {
-  const g = await env.DB.prepare(`SELECT id, category FROM groups WHERE id=? LIMIT 1`)
+  const g = await env.DB.prepare(`SELECT id, admin_id, category, member_posting_allowed FROM groups WHERE id=? LIMIT 1`)
     .bind(group_id)
     .first();
-  if (!g) return { ok: false as const, category: "general" };
-  return { ok: true as const, category: normalizeCategory((g as any).category) };
+  if (!g) return { ok: false as const, category: "general", group: null };
+  return { ok: true as const, category: normalizeCategory((g as any).category), group: g };
 };
 
 /** ============================================================
@@ -231,12 +244,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return bad("content or media_url or media_urls or media_meta required");
     }
 
-    const mem = await isMemberOrAdmin(env, group_id, user_id);
-    if (!mem.ok) return bad("User is not a member of this group", 403);
-
     const catRes = await getGroupCategory(env, group_id);
-    if (!catRes.ok) return bad("Group not found", 404);
+    if (!catRes.ok || !catRes.group) return bad("Group not found", 404);
     const groupCategory = catRes.category;
+    const groupRow = catRes.group;
+
+    const isOwner = toInt((groupRow as any).admin_id, 0) === user_id;
+    const mem = await isMemberOrAdmin(env, group_id, user_id);
+    if (!mem.ok && !isOwner) return bad("User is not a member of this group", 403);
+
+    const isGroupAdmin = isOwner || mem.role === "admin";
+    if (!isGroupAdmin) {
+      if (mem.posting_disabled) {
+        return bad("Posting is disabled for your account in this group", 403);
+      }
+      if ((groupRow as any).member_posting_allowed === 0 || (groupRow as any).member_posting_allowed === false) {
+        return bad("Posting is disabled for members in this group", 403);
+      }
+    }
 
     const meta = body.metadata && typeof body.metadata === "object" ? body.metadata : {};
 
@@ -387,10 +412,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     const url = new URL(request.url);
     const group_id = toInt(url.searchParams.get("group_id"), 0);
     const viewerId = toInt(url.searchParams.get("viewerId"), 0);
+    const limit = url.searchParams.has("limit") ? Math.min(Math.max(toInt(url.searchParams.get("limit"), 15), 1), 100) : 15;
+    const offset = Math.max(toInt(url.searchParams.get("offset"), 0), 0);
 
     const where = group_id ? `WHERE gp.group_id = ?` : ``;
     const binds: any[] = [];
     if (group_id) binds.push(group_id);
+    binds.push(limit, offset);
 
     const myReactionSelect = viewerId
       ? `(SELECT LOWER(COALESCE(r.type,'like'))
@@ -467,11 +495,11 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       JOIN users u ON u.id = gp.user_id
       ${where}
       ORDER BY gp.created_at DESC
-      LIMIT 200
+      LIMIT ? OFFSET ?
     `;
 
     const q = env.DB.prepare(stmt);
-    const { results } = group_id ? await q.bind(...binds).all() : await q.all();
+    const { results } = await q.bind(...binds).all();
 
     const posts = (results || []).map((r: any) => {
       const images = normalizeImagesForResponse(r);

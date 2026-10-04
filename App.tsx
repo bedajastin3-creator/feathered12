@@ -7741,10 +7741,10 @@ const fetchGroupsForViewer = useCallback(async () => {
     return Array.isArray(group.members) && group.members.includes(meId);
   }, [currentUser]);
 
-  const fetchGroupPosts = useCallback(async (groupId: number) => {
+  const fetchGroupPosts = useCallback(async (groupId: number, limit = 15, offset = 0) => {
     try {
       const viewerId = currentUser?.id ? Number(currentUser.id) : 0;
-      const res = await apiFetch(`/api/group-posts?group_id=${groupId}&viewerId=${viewerId}`);
+      const res = await apiFetch(`/api/group-posts?group_id=${groupId}&viewerId=${viewerId}&limit=${limit}&offset=${offset}`);
       
       const posts = safeArray((res as any)?.posts ?? res);
       return posts.map(normalizePost);
@@ -8461,18 +8461,97 @@ const removeGroupMember = useCallback(async (groupId: number, memberId: number) 
     
 const toggleMemberPosting = useCallback(async (groupId: number, userId: number, disabled: boolean) => {
   if (!requireAuth("Managing group members")) return;
-  
+  if (!currentUser) return;
   try {
-    const result = await apiFetch(`/api/group-members/${groupId}/toggle-posting`, {
+    const result = await apiFetch(`/api/group-members?action=toggle-posting`, {
       method: 'PATCH',
-      body: JSON.stringify({ user_id: userId, disabled }),
+      body: JSON.stringify({
+        group_id: Number(groupId),
+        user_id: Number(userId),
+        disabled: Boolean(disabled),
+        actor_id: Number(currentUser.id),
+      }),
     });
     return result;
   } catch (error) {
     console.error('Failed to toggle posting:', error);
     throw error;
   }
-}, [requireAuth]);
+}, [currentUser, requireAuth]);
+
+const disableAllMembers = useCallback(async (groupId: number) => {
+  if (!requireAuth("Managing group members")) return;
+  if (!currentUser) return;
+  try {
+    const result = await apiFetch(`/api/group-members?action=disable-all-members`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        group_id: Number(groupId),
+        actor_id: Number(currentUser.id),
+      }),
+    });
+    return result;
+  } catch (error) {
+    console.error('Failed to disable all members posting:', error);
+    throw error;
+  }
+}, [currentUser, requireAuth]);
+
+const enableAllMembers = useCallback(async (groupId: number) => {
+  if (!requireAuth("Managing group members")) return;
+  if (!currentUser) return;
+  try {
+    const result = await apiFetch(`/api/group-members?action=enable-all-members`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        group_id: Number(groupId),
+        actor_id: Number(currentUser.id),
+      }),
+    });
+    return result;
+  } catch (error) {
+    console.error('Failed to enable all members posting:', error);
+    throw error;
+  }
+}, [currentUser, requireAuth]);
+
+const makeAdmin = useCallback(async (groupId: number, userId: number) => {
+  if (!requireAuth("Managing group members")) return;
+  if (!currentUser) return;
+  try {
+    const result = await apiFetch(`/api/group-members?action=make-admin`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        group_id: Number(groupId),
+        user_id: Number(userId),
+        actor_id: Number(currentUser.id),
+      }),
+    });
+    return result;
+  } catch (error) {
+    console.error('Failed to make admin:', error);
+    throw error;
+  }
+}, [currentUser, requireAuth]);
+
+const removeAdmin = useCallback(async (groupId: number, userId: number) => {
+  if (!requireAuth("Managing group members")) return;
+  if (!currentUser) return;
+  try {
+    const result = await apiFetch(`/api/group-members?action=remove-admin`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        group_id: Number(groupId),
+        user_id: Number(userId),
+        actor_id: Number(currentUser.id),
+      }),
+    });
+    return result;
+  } catch (error) {
+    console.error('Failed to remove admin:', error);
+    throw error;
+  }
+}, [currentUser, requireAuth]);
 
 
     
