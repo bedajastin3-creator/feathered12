@@ -7781,27 +7781,54 @@ const fetchGroupsForViewer = useCallback(async () => {
 
   const fetchGroupPostComments = useCallback(async (postId: number) => {
     try {
-      const res = await apiFetch(`/api/group-post-comments?post_id=${Number(postId)}`);
-      return safeArray((res as any)?.comments);
+      const viewerId = currentUser?.id || 0;
+      const res = await apiFetch(`/api/group-post-comments?post_id=${Number(postId)}&viewerId=${viewerId}`);
+      return safeArray((res as any)?.comments ?? res);
     } catch (error) {
       console.error('Failed to fetch group comments:', error);
       return [];
     }
-  }, []);
+  }, [currentUser]);
 
 //===CREATE GROUP COMMENT===
             
-  const createGroupPostComment = useCallback(async (postId: number, text: string, parent_comment_id?: number | null) => {
+  const createGroupPostComment = useCallback(async (
+    postId: any,
+    text: string,
+    parent_comment_id?: number | null,
+    imageFile?: File | null,
+    imageUrl?: string | null
+  ) => {
     if (!requireAuth("Commenting")) return;
     const meId = Number(currentUser!.id);
+    const targetPostId = Number(
+      typeof postId === 'object' && postId !== null
+        ? (postId.id ?? postId.post_id ?? postId.postId ?? 0)
+        : postId
+    );
+
+    if (!targetPostId) {
+      console.error('Invalid post id for group comment:', postId);
+      return;
+    }
 
     try {
+      let finalImageUrl = imageUrl || null;
+      if (!finalImageUrl && imageFile) {
+        finalImageUrl = await ensureR2Url(
+          imageFile,
+          'comments',
+          `group-comment-${Date.now()}.jpg`
+        );
+      }
+
       const res = await apiFetch("/api/group-post-comments", {
         method: "POST",
         body: JSON.stringify({
           user_id: meId,
-          post_id: Number(postId),
+          post_id: targetPostId,
           text: String(text || "").trim(),
+          image_url: finalImageUrl || null,
           parent_comment_id: parent_comment_id ?? null,
         }),
       });
@@ -8563,16 +8590,21 @@ const updateGroupImage = useCallback(
   if (!currentUser) return;
 
   try {
-    const res = await apiFetch(`/api/group-invites?id=${Number(inviteId)}`, {
+    const validInviteId = Number(inviteId) || 0;
+    const url = `/api/group-invites?id=${validInviteId}${groupId ? `&group_id=${Number(groupId)}` : ''}`;
+    const res = await apiFetch(url, {
       method: 'PUT',
       body: JSON.stringify({
         status: 'accepted',
         user_id: Number(currentUser.id),
+        group_id: groupId ? Number(groupId) : undefined,
       }),
     });
 
     // Refresh group members to update UI
-    await refreshGroupMembers(groupId);
+    if (groupId) {
+      await refreshGroupMembers(groupId);
+    }
     
     // Refresh other data to update groups list
     fetchOtherData().catch(() => {});
@@ -8584,20 +8616,46 @@ const updateGroupImage = useCallback(
   }
 }, [currentUser, requireAuth, refreshGroupMembers, fetchOtherData]);   
 
-const declineGroupInvite = useCallback(async (inviteId: number) => {
+const declineGroupInvite = useCallback(async (inviteId: number, groupId?: number) => {
   if (!requireAuth("Declining group invites")) return;
   if (!currentUser) return;
 
   try {
-    return await apiFetch(
-      `/api/group-invites?id=${Number(inviteId)}&user_id=${Number(currentUser.id)}`,
-      { method: 'DELETE' }
-    );
+    const validInviteId = Number(inviteId) || 0;
+    const url = `/api/group-invites?id=${validInviteId}${groupId ? `&group_id=${Number(groupId)}` : ''}`;
+    const res = await apiFetch(url, {
+      method: 'PUT',
+      body: JSON.stringify({
+        status: 'declined',
+        user_id: Number(currentUser.id),
+        group_id: groupId ? Number(groupId) : undefined,
+      }),
+    });
+    fetchOtherData().catch(() => {});
+    return res;
   } catch (error) {
     console.error('Failed to decline group invite:', error);
     throw error;
   }
-}, [currentUser, requireAuth]);
+}, [currentUser, requireAuth, fetchOtherData]);
+
+  const toggleGroupPostCommentLike = useCallback(async (commentId: number): Promise<any> => {
+    if (!requireAuth('Liking comments')) return;
+    if (!currentUser) return;
+
+    try {
+      return await apiFetch(`/api/group-post-comment-likes`, {
+        method: 'POST',
+        body: JSON.stringify({
+          comment_id: Number(commentId),
+          user_id: Number(currentUser.id),
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to like group post comment:', error);
+      throw error;
+    }
+  }, [currentUser, requireAuth]);
 
   const handleLikeComment = useCallback(async (commentId: number): Promise<any> => {
     if (!requireAuth('Liking comments')) return;
@@ -10493,7 +10551,7 @@ const fetchComments = useCallback(async (item: any) => {
         endpoint = `/api/events/${id}/comments?viewerId=${currentUser?.id || 0}`;
         break;
       case 'group_post':
-        endpoint = `/api/groups/${item.group_id}/posts/${id}/comments?viewerId=${currentUser?.id || 0}`;
+        endpoint = `/api/group-post-comments?post_id=${id}&viewerId=${currentUser?.id || 0}`;
         break;
       case 'product':
         endpoint = `/api/products/${id}/reviews?viewerId=${currentUser?.id || 0}`;
@@ -10648,12 +10706,13 @@ const createComment = useCallback(async (
         };
         break;
       case 'group_post':
-        endpoint = `/api/groups/${item.group_id}/posts/${id}/comment`;
+        endpoint = `/api/group-post-comments`;
         payload = {
           user_id: currentUser.id,
+          post_id: id,
           text: text || '',
           parent_comment_id: parentCommentId ?? null,
-          image_url: image_url || '',
+          image_url: image_url || null,
         };
         break;
       case 'product':
@@ -11049,6 +11108,12 @@ const likeComment = useCallback(async (commentId: number) => {
   }
 
   try {
+    const isGroup =
+      activeCommentsIdentity?.type === 'group_post' ||
+      (commentPostSnapshot as any)?.group_id ||
+      (commentPostSnapshot as any)?.source === 'group_post' ||
+      (commentPostSnapshot as any)?.item_type === 'group_post' ||
+      (commentPostSnapshot as any)?.type === 'group_post';
     const isSong =
       activeCommentsIdentity?.type === 'music_post' ||
       (commentPostSnapshot as any)?.item_type === 'music' ||
@@ -11057,12 +11122,23 @@ const likeComment = useCallback(async (commentId: number) => {
       (commentPostSnapshot as any)?.type === 'song' ||
       (commentPostSnapshot as any)?.song_id ||
       (commentPostSnapshot as any)?.song_id2;
-    const likeEndpoint = isSong
-      ? `/api/song-comments/${commentId}/like`
-      : `/api/post-comments/${commentId}/like`;
+
+    let likeEndpoint = `/api/post-comments/${commentId}/like`;
+    let likeBody: any = { user_id: currentUser.id };
+
+    if (isGroup) {
+      likeEndpoint = `/api/group-post-comment-likes`;
+      likeBody = {
+        comment_id: Number(commentId),
+        user_id: Number(currentUser.id),
+      };
+    } else if (isSong) {
+      likeEndpoint = `/api/song-comments/${commentId}/like`;
+    }
+
     const data = await apiFetch(likeEndpoint, {
       method: 'POST',
-      body: JSON.stringify({ user_id: currentUser.id }),
+      body: JSON.stringify(likeBody),
     });
     
     return data;
@@ -12126,7 +12202,7 @@ return (
               fetchComments={fetchGroupPostComments}
               fetchGroupInvites={fetchGroupInvites}
               onComment={createGroupPostComment}
-              onLikeComment={handleLikeComment}
+              onLikeComment={toggleGroupPostCommentLike}
               onPlayAudioTrack={onPlayTrack}
               onFollow={followUser}
               checkIsFollowing={checkIsFollowing}

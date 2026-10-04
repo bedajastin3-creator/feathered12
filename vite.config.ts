@@ -878,6 +878,82 @@ function apiDevPlugin(): Plugin {
           });
         }
 
+        if (pathname === '/api/group-post-comments') {
+          if (req.method === 'GET') {
+            res.statusCode = 200;
+            return res.end(JSON.stringify({ success: true, comments: [] }));
+          }
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          return req.on('end', () => {
+            try {
+              const parsed = JSON.parse(body || '{}');
+              res.statusCode = 200;
+              return res.end(JSON.stringify({
+                success: true,
+                comment: {
+                  id: Date.now(),
+                  group_post_id: parsed.post_id,
+                  user_id: parsed.user_id,
+                  text: parsed.text || '',
+                  image_url: parsed.image_url || null,
+                  parent_comment_id: parsed.parent_comment_id || null,
+                  created_at: new Date().toISOString(),
+                }
+              }));
+            } catch {
+              res.statusCode = 200;
+              return res.end(JSON.stringify({ success: true }));
+            }
+          });
+        }
+
+        if (pathname === '/api/group-post-comment-likes') {
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          return req.on('end', () => {
+            try {
+              const parsed = JSON.parse(body || '{}');
+              res.statusCode = 200;
+              return res.end(JSON.stringify({
+                success: true,
+                comment_id: parsed.comment_id,
+                liked: true,
+                likes_count: 1
+              }));
+            } catch {
+              res.statusCode = 200;
+              return res.end(JSON.stringify({ success: true, liked: true, likes_count: 1 }));
+            }
+          });
+        }
+
+        if (pathname === '/api/group-invites') {
+          if (req.method === 'GET') {
+            res.statusCode = 200;
+            return res.end(JSON.stringify({ success: true, invites: [] }));
+          }
+          if (req.method === 'PUT') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            return req.on('end', () => {
+              try {
+                const parsed = JSON.parse(body || '{}');
+                res.statusCode = 200;
+                return res.end(JSON.stringify({
+                  success: true,
+                  message: `Invite ${parsed.status || 'updated'}`,
+                  status: parsed.status,
+                  invite_id: url.searchParams.get('id') || parsed.id
+                }));
+              } catch {
+                res.statusCode = 200;
+                return res.end(JSON.stringify({ success: true }));
+              }
+            });
+          }
+        }
+
         if (pathname === '/api/users') {
           res.statusCode = 200;
           return res.end(JSON.stringify([]));

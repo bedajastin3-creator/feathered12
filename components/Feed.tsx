@@ -10250,7 +10250,7 @@ export const CommentsSheet = memo(
   currentUser: User;
   users: User[];
   onClose: () => void;
-  onComment?: (postId: any, text: string, parentCommentId?: number | null, imageFile?: File) => void;
+  onComment?: (postId: any, text: string, parentCommentId?: number | null, imageFile?: File, imageUrl?: string | null) => void;
   onCommentAdded?: () => void;
   onLikeComment?: (commentId: number) => void;
   getCommentAuthor?: (id: number) => User | undefined;
@@ -10319,7 +10319,7 @@ export const CommentsSheet = memo(
         const eventId = p.event_id || p.id;
         return `/api/events/${eventId}/comments?viewerId=${viewerId}`;
       case 'group_post':
-        const groupPostId = p.id;
+        const groupPostId = p?.id || p?.post_id || postId;
         return `/api/group-post-comments?post_id=${groupPostId}&viewerId=${viewerId}`;
       case 'product':
         const productId = p.product_id || p.id;
@@ -10435,7 +10435,7 @@ export const CommentsSheet = memo(
       case 'event':
         return `/api/event-comments/${commentId}/like`;
       case 'group_post':
-        return `/api/post-comments/${commentId}/like`;
+        return `/api/group-post-comment-likes`;
       case 'product':
         return `/api/product-reviews/${commentId}/like`;
       case 'song':
@@ -10569,9 +10569,6 @@ export const CommentsSheet = memo(
       )
     );
 
-    if (onLikeComment) {
-      onLikeComment(comment.id);
-    }
     updateCachedComment(itemType, postId, comment.id, (c) => ({
       ...c,
       liked_by_me: optimisticLiked,
@@ -10579,15 +10576,19 @@ export const CommentsSheet = memo(
     }));
 
     try {
-      const endpoint = getLikeEndpoint(comment.id);
-      await apiFetch(endpoint, {
-        method: 'POST',
-        body: JSON.stringify({
-          user_id: safeUserId(currentUser),
-          comment_id: comment.id,
-          id: comment.id,
-        }),
-      });
+      if (onLikeComment) {
+        await onLikeComment(comment.id);
+      } else {
+        const endpoint = getLikeEndpoint(comment.id);
+        await apiFetch(endpoint, {
+          method: 'POST',
+          body: JSON.stringify({
+            user_id: safeUserId(currentUser),
+            comment_id: comment.id,
+            id: comment.id,
+          }),
+        });
+      }
     } catch (error) {
       console.error('Failed to like comment:', error);
       updateCachedComment(itemType, postId, comment.id, (c) => ({
@@ -11184,14 +11185,14 @@ export const CommentsSheet = memo(
           }),
         });
       } else if (onComment) {
-        await onComment(post || postId, finalText, parentCommentId, selectedImage || undefined);
+        await onComment(post || postId, finalText, parentCommentId, selectedImage || undefined, uploadedImageUrl);
       } else {
         let endpoint = '';
         let body: any = {
           text: finalText,
           user_id: safeUserId(currentUser),
           parent_comment_id: parentCommentId,
-          post_id: postId,
+          post_id: postId || p?.id,
           comment_id: replyTo?.id,
         };
         

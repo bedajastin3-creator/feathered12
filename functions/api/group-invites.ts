@@ -150,12 +150,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           continue;
         }
 
+        const existingInviteId = toInt((existing as any).id);
         await env.DB.prepare(
           `UPDATE group_invites
            SET inviter_id = ?, status = 'pending', created_at = CURRENT_TIMESTAMP, responded_at = NULL
            WHERE id = ?`
         )
-          .bind(inviter_id, toInt((existing as any).id))
+          .bind(inviter_id, existingInviteId)
           .run();
 
         // Trigger notification to invitee
@@ -170,6 +171,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
             `group:${group_id}:invite:${invitee_id}`,
             `invited you to join ${(group as any)?.name || "a group"}`
           );
+          // Set parent_id on notification to existingInviteId
+          await env.DB.prepare(
+            `UPDATE notifications SET parent_id = ? WHERE recipient_id = ? AND group_key = ?`
+          ).bind(String(existingInviteId), invitee_id, `group:${group_id}:invite:${invitee_id}`).run();
         } catch (_) {}
 
         results.push({
@@ -180,12 +185,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         continue;
       }
 
-      await env.DB.prepare(
+      const insertRes = await env.DB.prepare(
         `INSERT INTO group_invites (group_id, inviter_id, invitee_id, status)
          VALUES (?, ?, ?, 'pending')`
       )
         .bind(group_id, inviter_id, invitee_id)
         .run();
+
+      const newInviteId = toInt(insertRes?.meta?.last_row_id, 0);
 
       // Trigger notification to invitee
       try {
@@ -199,6 +206,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           `group:${group_id}:invite:${invitee_id}`,
           `invited you to join ${(group as any)?.name || "a group"}`
         );
+        if (newInviteId) {
+          await env.DB.prepare(
+            `UPDATE notifications SET parent_id = ? WHERE recipient_id = ? AND group_key = ?`
+          ).bind(String(newInviteId), invitee_id, `group:${group_id}:invite:${invitee_id}`).run();
+        }
       } catch (_) {}
 
       results.push({
@@ -305,17 +317,44 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
 export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
   try {
     const url = new URL(request.url);
-    const inviteId = toInt(url.searchParams.get("id"), 0);
+    let inviteId = toInt(url.searchParams.get("id"), 0);
     const body = await request.json().catch(() => ({} as any));
 
-    const user_id = toInt(body.user_id, 0);
-    const status = String(body.status || "").trim().toLowerCase();
+    if (!inviteId) {
+      inviteId = toInt(body.id ?? body.invite_id, 0);
+    }
 
-    if (!inviteId) return bad("Invite id is required");
+    const headerUserId = toInt(request.headers.get("x-user-id"), 0);
+    const bodyUserId = toInt(body.user_id, 0);
+    const user_id = headerUserId || bodyUserId || 0;
+
+    let status = String(body.status || "").trim().toLowerCase();
+    if (status === "rejected" || status === "reject" || status === "decline") {
+      status = "declined";
+    }
+    if (status === "join" || status === "accept") {
+      status = "accepted";
+    }
+
     if (!user_id) return bad("user_id is required");
     if (!["accepted", "declined"].includes(status)) {
       return bad("status must be accepted or declined");
     }
+
+    // Fallback: if inviteId not provided, search pending invite by group_id and user_id
+    if (!inviteId) {
+      const groupId = toInt(url.searchParams.get("group_id"), 0) || toInt(body.group_id, 0);
+      if (groupId) {
+        const found = await env.DB.prepare(
+          `SELECT id FROM group_invites WHERE group_id = ? AND invitee_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1`
+        ).bind(groupId, user_id).first<{ id: number }>();
+        if (found?.id) {
+          inviteId = toInt(found.id);
+        }
+      }
+    }
+
+    if (!inviteId) return bad("Invite id is required");
 
     const invite = await env.DB.prepare(
       `SELECT id, group_id, invitee_id, status
@@ -342,6 +381,13 @@ export const onRequestPut: PagesFunction<Env> = async ({ request, env }) => {
     )
       .bind(status, inviteId)
       .run();
+
+    // Mark any corresponding notifications as read
+    try {
+      await env.DB.prepare(
+        `UPDATE notifications SET is_read = 1 WHERE recipient_id = ? AND entity_type = 'group' AND entity_id = ?`
+      ).bind(user_id, String(group_id)).run();
+    } catch (_) {}
 
     // If accepted, add user to group_members if not already there
     if (status === "accepted") {

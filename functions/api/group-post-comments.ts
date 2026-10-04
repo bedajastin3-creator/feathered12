@@ -122,15 +122,26 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     if (!post?.group_id) return bad("Group post not found", 404);
 
-    // must be group member
-    const mem = await env.DB
-      .prepare(
-        `SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ? LIMIT 1`
-      )
-      .bind(Number(post.group_id), user_id)
-      .first();
+    // must be group member or admin/owner
+    let isMemberOrAdmin = false;
+    const group = await env.DB
+      .prepare(`SELECT admin_id, type FROM groups WHERE id = ? LIMIT 1`)
+      .bind(Number(post.group_id))
+      .first<any>();
 
-    if (!mem) return bad("User is not a member of this group", 403);
+    if (group && toNum(group.admin_id, 0) === user_id) {
+      isMemberOrAdmin = true;
+    } else {
+      const mem = await env.DB
+        .prepare(
+          `SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ? LIMIT 1`
+        )
+        .bind(Number(post.group_id), user_id)
+        .first();
+      if (mem) isMemberOrAdmin = true;
+    }
+
+    if (!isMemberOrAdmin) return bad("User is not a member of this group", 403);
 
     // parent comment
     let parentComment: any = null;

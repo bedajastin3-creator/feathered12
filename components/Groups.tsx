@@ -647,9 +647,7 @@ const GroupCommentPreview: React.FC<GroupCommentPreviewProps> = ({
       }
 
       const viewerId = currentUser?.id || 0;
-      const endpoint = effectiveGroupId
-        ? `/api/groups/${effectiveGroupId}/posts/${postId}/comments?viewerId=${viewerId}`
-        : `/api/posts/${postId}/comments?viewerId=${viewerId}`;
+      const endpoint = `/api/group-post-comments?post_id=${postId}&viewerId=${viewerId}`;
 
       apiFetch(endpoint)
         .then((data: any) => {
@@ -690,12 +688,13 @@ const GroupCommentPreview: React.FC<GroupCommentPreviewProps> = ({
     }));
 
     try {
-      const endpoint = effectiveGroupId
-        ? `/api/groups/${effectiveGroupId}/posts/${postId}/comments/${c.id}/like`
-        : `/api/comments/${c.id}/like`;
+      const endpoint = `/api/group-post-comment-likes`;
       await apiFetch(endpoint, {
         method: 'POST',
-        body: JSON.stringify({ user_id: currentUser.id }),
+        body: JSON.stringify({
+          comment_id: c.id,
+          user_id: currentUser.id,
+        }),
       });
     } catch {
       setPreviewComment((prev: any) =>
@@ -2529,7 +2528,14 @@ const handleLeaveGroup = async () => {
     if (!post) return;
     const author = users.find(u => u.id === post.user_id);
     if (!author) return;
-    setSelectedPost({ ...post, onCommentAdded: () => fetchUpdatedPost(postId) });
+    const effectivePost = {
+      ...post,
+      group_id: post.group_id || activeGroup?.id || activeGroupId,
+      source: 'group_post',
+      item_type: 'group_post',
+      onCommentAdded: () => fetchUpdatedPost(postId)
+    };
+    setSelectedPost(effectivePost);
     setSelectedPostAuthor(author);
     setShowPostView(true);
   };

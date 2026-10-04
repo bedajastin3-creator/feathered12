@@ -35,14 +35,15 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         try {
             if (onAcceptGroupInvite) {
                 await onAcceptGroupInvite(inviteId, groupId);
-            } else if (groupId) {
-                await fetch(`/api/groups/${groupId}/join`, {
-                    method: 'POST',
+            } else {
+                const targetInviteId = inviteId || 0;
+                await fetch(`/api/group-invites?id=${targetInviteId}${groupId ? `&group_id=${groupId}` : ''}`, {
+                    method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                         'x-user-id': String(currentUser?.id || ''),
                     },
-                    body: JSON.stringify({ user_id: currentUser?.id, group_id: groupId }),
+                    body: JSON.stringify({ user_id: currentUser?.id, status: 'accepted', group_id: groupId }),
                 });
             }
             setInviteStatus((prev) => ({ ...prev, [notifId]: 'joined' }));
@@ -63,14 +64,15 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
         try {
             if (onDeclineGroupInvite) {
                 await onDeclineGroupInvite(inviteId, groupId);
-            } else if (inviteId) {
-                await fetch(`/api/group-invites`, {
+            } else {
+                const targetInviteId = inviteId || 0;
+                await fetch(`/api/group-invites?id=${targetInviteId}${groupId ? `&group_id=${groupId}` : ''}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                         'x-user-id': String(currentUser?.id || ''),
                     },
-                    body: JSON.stringify({ id: inviteId, status: 'rejected' }),
+                    body: JSON.stringify({ id: targetInviteId, status: 'declined', user_id: currentUser?.id, group_id: groupId }),
                 });
             }
             setInviteStatus((prev) => ({ ...prev, [notifId]: 'rejected' }));
@@ -266,7 +268,7 @@ export const NotificationDropdown: React.FC<NotificationDropdownProps> = ({
                                                         onClick={(e) => handleRejectInvite(e, notif)}
                                                         className="px-2.5 py-1 rounded-md bg-[#1E293B] hover:bg-[#334155] text-[#CBD5E1] text-xs font-medium border border-[#334155] transition-all disabled:opacity-50 cursor-pointer"
                                                     >
-                                                        Reject
+                                                        {inviteLoading[notifId] ? <i className="fas fa-circle-notch fa-spin text-[10px]"></i> : 'Decline'}
                                                     </button>
                                                 </>
                                             )}
