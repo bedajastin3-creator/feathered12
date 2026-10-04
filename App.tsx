@@ -11969,6 +11969,9 @@ return (
   pushedPosts={pushedPosts}
   //group react  
   onToggleGroupPostLike={toggleGroupPostLike}
+  onApplyToJob={async (postId: number, applicationData?: any) => {
+    console.log('Apply to job from Feed:', postId, applicationData);
+  }}
   
   // ✅ MUSIC REACTION PROPS
   musicReactions={feedMusicReactions}

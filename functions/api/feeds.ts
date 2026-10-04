@@ -1888,7 +1888,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
           ELSE gp.media_urls
         END AS media_urls,
 
-        NULL AS media_types, NULL AS media_meta,
+        gp.media_types AS media_types,
+        gp.media_meta AS media_meta,
 
         (SELECT COUNT(*) FROM group_post_comments gpc WHERE gpc.group_post_id = gp.id AND COALESCE(gpc.is_deleted,0) = 0) AS comments_count,
 
@@ -1901,7 +1902,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
 
         NULL AS video_url, NULL AS caption, NULL AS song_name, NULL AS audio_url,
         0 AS audio_start, 0 AS audio_end,
-        NULL AS location, NULL AS sound_key, NULL AS sound_id,
+        gp.location AS location, NULL AS sound_key, NULL AS sound_id,
 
         NULL AS song_title, NULL AS song_artist_name, NULL AS song_album_name,
         NULL AS song_cover_image_url, NULL AS song_duration_seconds,
@@ -1911,7 +1912,26 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
         NULL AS attending_count, NULL AS interested_count,
         NULL AS my_rsvp_status,
 
-        NULL AS type, NULL AS post_type, NULL AS kind, NULL AS meta,
+        NULL AS type, NULL AS post_type, NULL AS kind,
+        json_object(
+          'job_title', gp.job_title,
+          'company', gp.company,
+          'job_type', gp.job_type,
+          'salary', gp.salary,
+          'location', gp.location,
+          'street', gp.street,
+          'district', gp.district,
+          'region', gp.region,
+          'country', gp.country,
+          'application_type', gp.application_type,
+          'application_value', gp.application_value,
+          'expiry_date', gp.expiry_date,
+          'price', gp.price,
+          'currency', gp.currency,
+          'condition', gp.condition,
+          'status', gp.status,
+          'group_category', g.category
+        ) AS meta,
 
         NULL AS shared_post,
         NULL AS shared_product,
@@ -2619,6 +2639,29 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
         comments_count: Number(item?.comments_count ?? 0),
         reactions_count: Number(item?.reactions_count ?? 0),
       };
+
+      if (item?.meta) {
+        let metaObj = item.meta;
+        if (typeof metaObj === "string") {
+          try {
+            metaObj = JSON.parse(metaObj);
+          } catch {
+            metaObj = null;
+          }
+        }
+        if (metaObj && typeof metaObj === "object") {
+          normalized.meta = metaObj;
+          if (metaObj.job_title && !normalized.job_title) normalized.job_title = metaObj.job_title;
+          if (metaObj.company && !normalized.company) normalized.company = metaObj.company;
+          if (metaObj.job_type && !normalized.job_type) normalized.job_type = metaObj.job_type;
+          if (metaObj.salary && !normalized.salary) normalized.salary = metaObj.salary;
+          if (metaObj.location && !normalized.location) normalized.location = metaObj.location;
+          if (metaObj.application_type && !normalized.application_type) normalized.application_type = metaObj.application_type;
+          if (metaObj.application_value && !normalized.application_value) normalized.application_value = metaObj.application_value;
+          if (metaObj.expiry_date && !normalized.expiry_date) normalized.expiry_date = metaObj.expiry_date;
+          if (metaObj.group_category && !normalized.group_category) normalized.group_category = metaObj.group_category;
+        }
+      }
 
       // Normalize nested shared_post
       if ((item as any)?.shared_post) {

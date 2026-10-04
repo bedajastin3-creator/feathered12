@@ -6520,6 +6520,7 @@ export const Post = memo(
     onToggleGroupPostLike,
     hideCommentPreview = false,
     onOpenStory,
+    onApplyToJob,
   }: {
     post: PostType;
     author: User | any;
@@ -6527,6 +6528,7 @@ export const Post = memo(
     users?: User[];
     stories?: any[];
     onOpenStory?: (story: any) => void;
+    onApplyToJob?: (postId: number) => void;
 
     onProfileClick: (id: number) => void;
 
@@ -6927,6 +6929,81 @@ export const Post = memo(
     const groupId = rawGroupId || group?.id || 0;
     const groupName = rawGroupName || group?.name || '';
     const isGroupPost = !!(groupId || group || groupName);
+
+    const groupCategory = String(
+      p?.group_category ||
+      group?.category ||
+      meta?.group_category ||
+      p?.category ||
+      ''
+    ).toLowerCase();
+
+    const isCareerGroup =
+      groupCategory === 'recruitment' ||
+      groupCategory === 'jobs' ||
+      groupCategory === 'career' ||
+      Boolean(groupName && (
+        groupName.toLowerCase().includes('job') ||
+        groupName.toLowerCase().includes('career') ||
+        groupName.toLowerCase().includes('recruitment') ||
+        groupName.toLowerCase().includes('employment')
+      ));
+
+    // Job fields for Jobs and Career group posts
+    const jobTitle = safeStr(p?.job_title || meta?.job_title || '');
+    const company = safeStr(p?.company || meta?.company || '');
+    const rawJobLocation = safeStr(p?.location || meta?.location || '');
+    const jobLocationParts = [
+      p?.street || meta?.street,
+      p?.district || meta?.district,
+      p?.region || meta?.region,
+      p?.country || meta?.country,
+    ].filter(Boolean);
+    const jobLocation = rawJobLocation || jobLocationParts.join(', ');
+    const jobType = safeStr(p?.job_type || meta?.job_type || '');
+    const salary = safeStr(p?.salary || meta?.salary || '');
+    const applicationType = safeStr(p?.application_type || meta?.application_type || '');
+    const applicationValue = safeStr(p?.application_value || meta?.application_value || '');
+    const expiryDateVal = p?.expiry_date || meta?.expiry_date || null;
+    const expiryDate = expiryDateVal ? new Date(expiryDateVal) : null;
+    const isJobExpired = expiryDate ? expiryDate < new Date() : false;
+
+    // Display specialized job card if post has jobTitle and is from a career group or has company/location/apply details
+    const isJobPost = Boolean(
+      isGroupPost && jobTitle && (isCareerGroup || company || jobLocation || applicationValue || jobType)
+    );
+
+    const [appliedJob, setAppliedJob] = useState(false);
+
+    const handleJobApply = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!currentUser) {
+        alert('Please login to apply');
+        return;
+      }
+      if (isJobExpired) {
+        alert('This job posting has expired');
+        return;
+      }
+      if (applicationType === 'email' || (applicationValue && applicationValue.includes('@'))) {
+        window.location.href = `mailto:${applicationValue}?subject=Application for ${encodeURIComponent(jobTitle)} at ${encodeURIComponent(company || '')}`;
+      } else if (applicationValue) {
+        const url = applicationValue.startsWith('http://') || applicationValue.startsWith('https://')
+          ? applicationValue
+          : `https://${applicationValue}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        alert(`Application submitted for ${jobTitle}`);
+      }
+      setAppliedJob(true);
+      if (onApplyToJob) {
+        try {
+          onApplyToJob(Number(p?.id || p?.post_id || 0));
+        } catch (err) {
+          console.error('Failed to register apply:', err);
+        }
+      }
+    };
 
     const myReaction = p.myReaction ?? p.my_reaction ?? null;
     const likesCount = Number(p.likesCount ?? p.reactionsCount ?? p.reactions_count ?? p.likes_count ?? p.likes ?? 0);
@@ -7800,8 +7877,106 @@ export const Post = memo(
               );
             })()}
 
+            {isJobPost && (
+              <div className="px-3 md:px-4 pb-3">
+                <div className="bg-[#1E293B] rounded-xl p-4 sm:p-5 border border-[#334155]/60 mb-2">
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#45BD62]/10 rounded-full border border-[#45BD62]/20">
+                      <i className="fas fa-briefcase text-[#45BD62] text-xs"></i>
+                      <span className="text-[#45BD62] text-xs font-bold tracking-wide">JOB POSTING</span>
+                    </div>
+                    {isJobExpired && (
+                      <div className="inline-flex items-center gap-1 px-3 py-1 bg-[#F3425F]/10 rounded-full border border-[#F3425F]/20">
+                        <i className="fas fa-clock text-[#F3425F] text-xs"></i>
+                        <span className="text-[#F3425F] text-xs font-bold">EXPIRED</span>
+                      </div>
+                    )}
+                    {expiryDate && !isJobExpired && (
+                      <div className="inline-flex items-center gap-1 px-3 py-1 bg-[#F7B928]/10 rounded-full border border-[#F7B928]/20">
+                        <i className="fas fa-calendar-alt text-[#F7B928] text-xs"></i>
+                        <span className="text-[#F7B928] text-xs">
+                          Expires {expiryDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <h2 className="text-[#F8FAFC] font-bold text-xl sm:text-2xl mb-2">{jobTitle}</h2>
+                  {company && (
+                    <div className="flex items-center gap-2 text-[#94A3B8] mb-3">
+                      <i className="fas fa-building text-sm w-5 text-[#45BD62]"></i>
+                      <span className="text-base font-semibold text-[#CBD5E1]">{company}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-4">
+                    {jobLocation && (
+                      <div className="flex items-center gap-2 text-[#94A3B8]">
+                        <i className="fas fa-map-marker-alt text-sm w-5 text-[#45BD62]"></i>
+                        <span className="text-[14.5px] truncate">{jobLocation}</span>
+                      </div>
+                    )}
+                    {jobType && (
+                      <div className="flex items-center gap-2 text-[#94A3B8]">
+                        <i className="fas fa-clock text-sm w-5 text-[#F7B928]"></i>
+                        <span className="text-[14.5px]">{jobType}</span>
+                      </div>
+                    )}
+                    {salary && (
+                      <div className="flex items-center gap-2 text-[#94A3B8] sm:col-span-2">
+                        <i className="fas fa-dollar-sign text-sm w-5 text-[#45BD62]"></i>
+                        <span className="text-[14.5px] font-medium text-[#45BD62]">{salary}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Apply Button on top after Job Type and Salary before description */}
+                  <div className="mb-3">
+                    {!isJobExpired ? (
+                      <button
+                        type="button"
+                        onClick={handleJobApply}
+                        disabled={appliedJob}
+                        className="w-full bg-[#1877F2] hover:bg-[#166FE5] text-white py-3 rounded-xl font-bold text-[16px] sm:text-[17px] transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                      >
+                        {appliedJob ? (
+                          <>
+                            <i className="fas fa-check text-base"></i>
+                            <span>Applied</span>
+                          </>
+                        ) : (
+                          <>
+                            <i className="fas fa-paper-plane text-base"></i>
+                            <span>Apply Now</span>
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <div className="w-full bg-[#F3425F]/10 text-[#F3425F] py-2.5 rounded-xl font-bold text-center border border-[#F3425F]/20 flex items-center justify-center gap-2 text-[15px]">
+                        <i className="fas fa-clock"></i>
+                        <span>This job posting has expired</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {p.content && (
+                    <div className="mt-3 pt-3 border-t border-[#334155]/50">
+                      <ExpandableRichText
+                        text={String(p.content)}
+                        users={users}
+                        onProfileClick={onProfileClick}
+                        onHashtagClick={onHashtagClick}
+                        maxWords={18}
+                        fontSizePx={16}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {(() => {
-              if (!p.content || isMarketplace) return null;
+              if (!p.content || isMarketplace || isJobPost) return null;
               
               // If post has a link preview, check if content is solely or contains the link
               let textToDisplay = String(p.content);
@@ -11871,6 +12046,8 @@ interface FeedProps {
     postId: number,
     type?: ReactionType
   ) => Promise<{ liked: boolean; likes_count: number } | void>;
+
+  onApplyToJob?: (postId: number, applicationData?: any) => void;
 }
   
     
@@ -11929,6 +12106,7 @@ export const Feed = memo(({
   onLoadMoreFeed,
   hasMoreFeed = true,
   feedLoadingMore = false,
+  onApplyToJob,
 }: FeedProps) => {
   const feedMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -12294,6 +12472,7 @@ export const Feed = memo(({
   onOpenGroup={onOpenGroup}
   onDelete={onDeletePost}
   onEdit={onEditPost}
+  onApplyToJob={onApplyToJob}
   
   pushButton={showPushButton ? (
     <button

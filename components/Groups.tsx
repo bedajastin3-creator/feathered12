@@ -935,6 +935,35 @@ const RecruitmentPost: React.FC<any> = (props) => {
               {jobType && (<div className="flex items-center gap-2 text-[#94A3B8]"><i className="fas fa-clock text-sm w-5 text-[#F7B928]"></i><span className="text-sm">{jobType}</span></div>)}
               {salary && (<div className="flex items-center gap-2 text-[#94A3B8] col-span-2"><i className="fas fa-dollar-sign text-sm w-5 text-[#45BD62]"></i><span className="text-sm font-medium text-[#45BD62]">{salary}</span></div>)}
             </div>
+
+            {/* Apply Button on top after Job Type and Salary before description */}
+            <div className="mb-4">
+              {!isExpired ? (
+                <button
+                  onClick={handleApply}
+                  disabled={applied}
+                  className="w-full bg-[#1B74E4] text-white py-3 rounded-xl font-bold text-lg hover:bg-[#1A6ED8] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99]"
+                >
+                  {applied ? (
+                    <>
+                      <i className="fas fa-check"></i>
+                      <span>Applied</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-paper-plane text-base"></i>
+                      <span>Apply Now</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <div className="w-full bg-[#F3425F]/10 text-[#F3425F] py-3 rounded-xl font-bold text-center border border-[#F3425F]/20 flex items-center justify-center gap-2">
+                  <i className="fas fa-clock"></i>
+                  <span>This job posting has expired</span>
+                </div>
+              )}
+            </div>
+
             {post.content && (
               <div className="mb-4">
                 <div className="text-[#F8FAFC] whitespace-pre-wrap" style={{ fontSize: '20px' }}>
@@ -945,9 +974,6 @@ const RecruitmentPost: React.FC<any> = (props) => {
             )}
             {imageMedia.length > 0 && (<div className="mb-4"><MediaGrid media={imageMedia} onOpen={(url, index) => { const urls = imageMedia.map(m => m.full || m.feed || m.url); openGallery(urls, index); }} /></div>)}
             {videoMedia.length > 0 && (<div className="mb-4"><video src={videoMedia[0].url} className="w-full rounded-lg" controls playsInline /></div>)}
-            {applicationType && applicationValue && !isExpired && (<button onClick={handleApply} disabled={applied} className="w-full bg-[#1B74E4] text-white py-3 rounded-lg font-bold text-lg hover:bg-[#1A6ED8] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md">{applied ? (<span className="flex items-center justify-center gap-2"><i className="fas fa-check"></i>Applied</span>) : 'Apply Now'}</button>)}
-            {isExpired && (<div className="w-full bg-[#F3425F]/10 text-[#F3425F] py-3 rounded-lg font-bold text-lg text-center border border-[#F3425F]/20">This job posting has expired</div>)}
-            {!applicationType && !isExpired && (<div className="w-full bg-[#1E293B] text-[#94A3B8] py-3 rounded-lg font-bold text-lg text-center border border-[#1E293B]">No application method provided</div>)}
           </div>
         </div>
         {(localReactionCount > 0 || commentCount > 0) && (
@@ -1453,7 +1479,7 @@ function normalizeEvent(event: any): Event {
   } as any;
 }
 
-// Category Selection Modal Component
+// Category Selection Modal Component (Full Page Platform Dark Theme)
 const CategorySelectionModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
@@ -1462,30 +1488,96 @@ const CategorySelectionModal: React.FC<{
   const [selectedId, setSelectedId] = useState<GroupCategory | null>(null);
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4 animate-fade-in">
-      <div className="bg-[#0F172A] w-full max-w-[600px] rounded-xl border border-[#1E293B] shadow-2xl overflow-hidden animate-slide-up">
-        <div className="p-4 border-b border-[#1E293B] flex justify-between items-center">
-          <h3 className="text-xl font-bold text-[#F8FAFC]">Choose Group Category</h3>
-          <div onClick={onClose} className="w-8 h-8 rounded-full bg-[#1E293B] flex items-center justify-center cursor-pointer hover:bg-[#334155] transition-colors"><i className="fas fa-times text-[#94A3B8]"></i></div>
+    <div className="fixed inset-0 z-[200] bg-[#050B18] flex flex-col font-sans animate-fade-in overflow-hidden">
+      {/* Top Sticky Header */}
+      <div className="sticky top-0 z-10 bg-[#0F172A] border-b border-[#1E293B]">
+        <div className="max-w-[760px] mx-auto px-4 h-16 flex items-center justify-between">
+          <button
+            onClick={onClose}
+            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-[#141E33] transition-colors"
+            aria-label="Back"
+          >
+            <i className="fas fa-arrow-left text-[#F8FAFC] text-xl"></i>
+          </button>
+          <h1 className="text-xl font-bold text-[#F8FAFC]">Choose Group Category</h1>
+          <button
+            onClick={() => {
+              if (selectedId) {
+                onSelect(selectedId);
+                onClose();
+              }
+            }}
+            disabled={!selectedId}
+            className="px-5 py-2 bg-[#1877f2] text-white font-bold rounded-xl hover:bg-[#166fe5] transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md text-base"
+          >
+            Continue
+          </button>
         </div>
-        <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
-          {GROUP_CATEGORIES.map((category) => (
-            <button key={category.id} onClick={() => setSelectedId(category.id)} className={`w-full p-4 rounded-xl border-2 transition-all ${selectedId === category.id ? 'border-[#1877f2] bg-[#1877f2]/10' : 'border-[#1E293B] hover:border-[#334155] bg-[#1E293B]'}`}>
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ backgroundColor: `${category.color}20`, color: category.color }}><i className={category.icon}></i></div>
-                <div className="flex-1 text-left">
-                  <h4 className="text-[#F8FAFC] font-bold text-lg mb-1">{category.label}</h4>
-                  <p className="text-[#94A3B8] text-sm mb-2">{category.description}</p>
-                  <div className="flex flex-wrap gap-2">{category.features.map((feature, i) => (<span key={i} className="px-2 py-1 bg-[#1E293B] rounded-full text-xs text-[#94A3B8]">{feature}</span>))}</div>
-                </div>
-                {selectedId === category.id && (<div className="w-6 h-6 rounded-full bg-[#1877f2] flex items-center justify-center"><i className="fas fa-check text-white text-xs"></i></div>)}
-              </div>
-            </button>
-          ))}
-        </div>
-        <div className="p-4 border-t border-[#1E293B] flex gap-2">
-          <button onClick={onClose} className="flex-1 bg-[#1E293B] text-[#F8FAFC] py-2.5 rounded-lg font-bold hover:bg-[#334155] transition-colors">Cancel</button>
-          <button onClick={() => { if (selectedId) { onSelect(selectedId); onClose(); } }} disabled={!selectedId} className="flex-1 bg-[#1877f2] text-white py-2.5 rounded-lg font-bold hover:bg-[#166fe5] transition-colors disabled:opacity-50">Continue</button>
+      </div>
+
+      {/* Full Page Content */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-[760px] mx-auto p-4 sm:p-6 space-y-4">
+          <div className="mb-2">
+            <h2 className="text-[#F8FAFC] text-2xl font-black mb-1">Select a Category</h2>
+            <p className="text-[#94A3B8] text-sm sm:text-base">
+              Choose the category that best describes your group's mission. This configures specialized tools, custom post formats, and features for your community.
+            </p>
+          </div>
+
+          <div className="space-y-3 pb-8">
+            {GROUP_CATEGORIES.map((category) => {
+              const isSelected = selectedId === category.id;
+              return (
+                <button
+                  key={category.id}
+                  type="button"
+                  onClick={() => setSelectedId(category.id)}
+                  className={`w-full p-4 sm:p-5 rounded-2xl border-2 transition-all text-left flex items-start gap-4 cursor-pointer ${
+                    isSelected
+                      ? 'border-[#1877f2] bg-[#1877f2]/10 shadow-lg ring-1 ring-[#1877f2]/30'
+                      : 'border-[#1E293B] hover:border-[#334155] bg-[#0F172A] hover:bg-[#141E33]'
+                  }`}
+                >
+                  <div
+                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center text-2xl shrink-0 transition-transform"
+                    style={{ backgroundColor: `${category.color}20`, color: category.color }}
+                  >
+                    <i className={category.icon}></i>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <h3 className="text-[#F8FAFC] font-bold text-lg sm:text-xl truncate">
+                        {category.label}
+                      </h3>
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border transition-all ${
+                          isSelected
+                            ? 'border-[#1877f2] bg-[#1877f2] text-white'
+                            : 'border-[#334155] bg-[#1E293B]'
+                        }`}
+                      >
+                        {isSelected && <i className="fas fa-check text-xs"></i>}
+                      </div>
+                    </div>
+                    <p className="text-[#94A3B8] text-sm sm:text-[15px] mb-3 leading-relaxed">
+                      {category.description}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {category.features.map((feature, i) => (
+                        <span
+                          key={i}
+                          className="px-2.5 py-1 bg-[#1E293B] rounded-lg text-xs font-medium text-[#CBD5E1] border border-[#334155]/40"
+                        >
+                          {feature}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -1501,14 +1593,13 @@ const CreateGroupFullPageModal: React.FC<{
 }> = ({ isOpen, onClose, onCreate, selectedCategory }) => {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
-  const [type, setType] = useState<'public' | 'private'>('public');
+  const [type] = useState<'public'>('public');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setName('');
       setDesc('');
-      setType('public');
     }
   }, [isOpen]);
 
@@ -1519,7 +1610,7 @@ const CreateGroupFullPageModal: React.FC<{
       await onCreate({
         name: name.trim(),
         description: desc.trim(),
-        type,
+        type: 'public',
         category: selectedCategory,
         profile_image: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
         cover_image: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1500&q=80',
@@ -1553,7 +1644,23 @@ const CreateGroupFullPageModal: React.FC<{
           )}
           <div><label className="block text-[#94A3B8] text-sm font-bold mb-2">Group Name *</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="What's the name of your community?" className="w-full bg-[#1E293B] border border-[#1E293B] rounded-xl p-4 text-[#F8FAFC] text-lg outline-none focus:border-[#1877f2] transition-colors" autoFocus /></div>
           <div><label className="block text-[#94A3B8] text-sm font-bold mb-2">Description</label><textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Tell people what this group is about..." rows={4} className="w-full bg-[#1E293B] border border-[#1E293B] rounded-xl p-4 text-[#F8FAFC] text-base outline-none resize-none focus:border-[#1877f2] transition-colors" /></div>
-          <div><label className="block text-[#94A3B8] text-sm font-bold mb-2">Privacy</label><div className="grid grid-cols-2 gap-3"><button onClick={() => setType('public')} className={`p-4 rounded-xl border-2 transition-all text-left ${type === 'public' ? 'border-[#1877f2] bg-[#1877f2]/10' : 'border-[#1E293B] bg-[#1E293B]'}`}><i className="fas fa-globe text-[#1877f2] text-xl mb-2"></i><div className="text-[#F8FAFC] font-bold">Public</div><div className="text-[#94A3B8] text-xs">Anyone can see and join</div></button><button onClick={() => setType('private')} className={`p-4 rounded-xl border-2 transition-all text-left ${type === 'private' ? 'border-[#1877f2] bg-[#1877f2]/10' : 'border-[#1E293B] bg-[#1E293B]'}`}><i className="fas fa-lock text-[#F7B928] text-xl mb-2"></i><div className="text-[#F8FAFC] font-bold">Private</div><div className="text-[#94A3B8] text-xs">Members need approval</div></button></div></div>
+          <div>
+            <label className="block text-[#94A3B8] text-sm font-bold mb-2">Privacy</label>
+            <div className="w-full p-4 rounded-xl border-2 border-[#1877f2] bg-[#1877f2]/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#1877f2]/20 flex items-center justify-center text-[#1877f2]">
+                  <i className="fas fa-globe text-lg"></i>
+                </div>
+                <div>
+                  <div className="text-[#F8FAFC] font-bold text-base">Public</div>
+                  <div className="text-[#94A3B8] text-xs">Anyone can see who's in the group and what they post</div>
+                </div>
+              </div>
+              <div className="w-6 h-6 rounded-full bg-[#1877f2] flex items-center justify-center text-white text-xs">
+                <i className="fas fa-check"></i>
+              </div>
+            </div>
+          </div>
           {categoryInfo && (<div className="bg-[#0F172A] rounded-xl p-4 border border-[#1E293B]"><div className="text-[#94A3B8] text-sm font-bold mb-3">What you can post:</div><div className="flex flex-wrap gap-2">{categoryInfo.features.map((feature, i) => (<span key={i} className="px-3 py-1.5 bg-[#1E293B] rounded-full text-[#F8FAFC] text-sm"><i className="fas fa-check text-[#45BD62] mr-2 text-xs"></i>{feature}</span>))}</div></div>)}
         </div>
       </div>
